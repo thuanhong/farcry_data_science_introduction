@@ -49,10 +49,37 @@ def parse_frags(log_data):
     return output
 
 
+def prettify_frags(frags):
+    def take_icon(weapon):
+        for key, value in icon_dict.items():
+            if weapon in value:
+                return key
+        raise ValueError('Do not weapon in dataset')
+
+    icon_dict = {
+        '🔫' : ['Falcon', 'Shotgun', 'P90', 'MP5', 'M4', 'AG36', 'OICW', 'SniperRifle',
+                'M249', 'MG', 'VehicleMountedAutoMG', 'VehicleMountedMG'],
+        '💣' : ['HandGrenade', 'AG36Grenade', 'OICWGrenade', 'StickyExplosive'],
+        '🚙' : ['Vehicle'],
+        '🚀' : ['Rocket', 'VehicleMountedRocketMG', 'VehicleRocket'],
+        '🔪' : ['Machete'],
+        '🚤' : ['Boat']
+    }
+
+    prettified_frags = []
+    for ele in frags:
+        if len(ele) == 4:
+            icon = take_icon(ele[3])
+            prettified_frags.append('[{}] 😛 {} {} 😦 {}'.format(str(ele[0]), ele[1], icon, ele[2]))
+        else:
+            prettified_frags.append('[{}] 😦 {} ☠'.format(str(ele[0]), ele[1]))
+    return prettified_frags
+    
+
 def main():
     log_data = read_log_file(argv[1])
-    for x in parse_frags(log_data):
-        print(x)
+    frags = parse_frags(log_data)
+    print('\n'.join(prettify_frags(frags)))
 
 
 if __name__ == "__main__":
