@@ -21,11 +21,18 @@ def parse_log_start_time(log_data):
     return obj_datetime
 
 
-def parse_log_time(start_time, time_string, tz):
-    format_log_time = '%Y-%m-%d %H:%M:%S'
-    time_string = start_time[:14] + time_string[1:-1]
-    obj_datetime = datetime.strptime(time_string, format_log_time)
-    obj_datetime = obj_datetime.replace(tzinfo = tz)
+def parse_log_time(obj_log_time, time_string):
+
+    delta_second = int(time_string[3:]) - obj_log_time.second
+    delta_minute = int(time_string[:2]) - obj_log_time.minute
+
+    if delta_minute < 0:
+        delta_hour = 1
+    else:
+        delta_hour = 0
+    obj_datetime = obj_log_time + timedelta(hours=delta_hour,
+                                            minutes=delta_minute,
+                                            seconds=delta_second)
     return obj_datetime
 
 
@@ -41,7 +48,7 @@ def parse_frags(log_data):
     for line in log_data.split('\n'):
         if 'killed' in line:
             line = line.split()
-            new_datetime = parse_log_time(str(obj_datetime), line[0], obj_datetime.tzinfo)
+            new_datetime = parse_log_time(obj_datetime, line[0][1:-1])
             if len(line) == 7:
                 output.append((new_datetime, line[2], line[4], line[6]))
             else:
@@ -74,12 +81,30 @@ def prettify_frags(frags):
         else:
             prettified_frags.append('[{}] 😦 {} ☠'.format(str(ele[0]), ele[1]))
     return prettified_frags
-    
+
+
+def parse_game_session_start_and_end_times(log_data):
+    mode_map = parse_match_mode_and_map(log_data)
+
+    start_time = log_data.partition('  Level ' + mode_map[1] + ' loaded in ')[0][-6:-1]
+    end_time = log_data.partition('Statistics')
+    if not end_time[1]:
+        print('error: stack overflow')
+        exit(1)
+    end_time = end_time[0][-10:-5]
+
+    obj_datetime = parse_log_start_time(log_data)
+
+    start_time = parse_log_time(obj_datetime, start_time)
+    end_time = parse_log_time(obj_datetime, end_time)
+
 
 def main():
     log_data = read_log_file(argv[1])
-    frags = parse_frags(log_data)
-    print('\n'.join(prettify_frags(frags)))
+    # frags = parse_frags(log_data)
+    # obj_datetime = parse_log_start_time(log_data)
+    parse_game_session_start_and_end_times(log_data)
+    # print(type(parse_log_start_time(log_data).hour))
 
 
 if __name__ == "__main__":
