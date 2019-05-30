@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from sys import argv
 from re import findall
 from json import dumps
+from csv import writer, QUOTE_ALL
 
 
 def read_log_file(log_file_pathname):
@@ -99,12 +100,16 @@ def parse_game_session_start_and_end_times(log_data):
     end_time = parse_log_time(obj_datetime, end_time)
 
 
+def abc(file_csv, frags):
+    with open(file_csv, 'w') as myfile:
+        wr = writer(myfile, lineterminator='\n')
+        wr.writerows(frags)
+
+
 def main():
     log_data = read_log_file(argv[1])
-    # frags = parse_frags(log_data)
-    # obj_datetime = parse_log_start_time(log_data)
-    parse_game_session_start_and_end_times(log_data)
-    # print(type(parse_log_start_time(log_data).hour))
+    frags = parse_frags(log_data)
+    abc('log1234.csv', frags)
 
 
 if __name__ == "__main__":
