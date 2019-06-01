@@ -115,9 +115,9 @@ def insert_match_to_sqlite(file_pathname, start_time, end_time, game_mode, map_m
                                     (?, ?, ?, ?, ?)',(match_id, *frag))
             else:
                 conn_frags.execute('INSERT INTO match_frag\
-                                    (match_id, frag_time, killer_name, victim_name)\
+                                    (match_id, frag_time, killer_name)\
                                     VALUES\
-                                    (?, ?, ?, ?)',(match_id, *frag))
+                                    (?, ?, ?)',(match_id, *frag[:-1]))
 
     conn_db = sqlite3.connect(file_pathname)
     conn_match = conn_db.cursor()
@@ -144,4 +144,4 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as error:
-        print(error)
+        print('ERROR : {}', error)
