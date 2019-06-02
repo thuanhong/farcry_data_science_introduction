@@ -79,9 +79,28 @@ group by match_id, player_name
 order by match_id, death_count DESC;
 
 #waypoint 43
-select match.match_id, match.start_time, match.end_time, count(match_frag.killer_name) as player_count, count(match_frag.frag_time) as kill_suicide_count
+select match.match_id, match.start_time, match.end_time, count(distinct match_frag.killer_name) as player_count, count(match_frag.frag_time) as kill_suicide_count
 from match
 INNER join match_frag on match.match_id = match_frag.match_id
 group by match.match_id;
 
 #waypoint 44
+/* SQL 01 */
+select match_id, killer_name as player_name, count(killer_name) as kill_count, count(case when victim_name is null then 1 else null end) as suicide_count, killer_name=0 as death_name
+from match_frag
+group by match_id, player_name
+/* SQL 02 */
+select match_id, victim_name as player_name, killer_name=0 as kill_count, victim_name=0 as suicide_count, count(victim_name) as death_name
+from match_frag
+where victim_name is not null
+group by match_id, player_name
+/* SQL 03 */
+select match_id, killer_name as player_name, count(killer_name) as kill_count, count(case when victim_name is null then 1 else null end) as suicide_count, killer_name=0 as death_name
+from match_frag
+group by match_id, player_name
+union all
+select match_id, victim_name as player_name, killer_name=0 as kill_count, victim_name=0 as suicide_count, count(victim_name) as death_name
+from match_frag
+where victim_name is not null
+group by match_id, player_name
+order by match_id, player_name
