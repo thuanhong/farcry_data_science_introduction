@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import sqlite3
+import psycopg2
 from datetime import datetime, timezone, timedelta
 from sys import argv
 from re import findall
-from json import dumps
 from csv import writer
 
 
@@ -64,7 +64,7 @@ def prettify_frags(frags):
         for key, value in icon_dict.items():
             if weapon in value:
                 return key
-        raise ValueError('Do not weapon in dataset')
+        raise ValueError('Do not {} in dataset'.format(weapon))
 
     icon_dict = {
         '🔫' : ['Falcon', 'Shotgun', 'P90', 'MP5', 'M4', 'AG36', 'OICW', 'SniperRifle',
@@ -104,7 +104,7 @@ def write_frag_csv_file(file_csv, frags):
         wr.writerows(frags)
 
 
-def insert_match_to_sqlite(file_pathname, start_time, end_time, game_mode, map_mode, frags):
+def insert_match_to_sqlite(file_pathname, start_time, end_time, game_mode, map_name, frags):
     def insert_frags_to_sqlite(connection, match_id):
         conn_frags = connection.cursor()
         for frag in frags:
@@ -124,11 +124,48 @@ def insert_match_to_sqlite(file_pathname, start_time, end_time, game_mode, map_m
     conn_match.execute('INSERT INTO match\
                (start_time, end_time, game_mode, map_name)\
                VALUES\
-               (?, ?, ?, ?)', (start_time, end_time, game_mode, map_mode))
-    insert_frags_to_sqlite(conn_db, conn_match.lastrowid)
-    print(conn_match.lastrowid)
+               (?, ?, ?, ?)', (start_time, end_time, game_mode, map_name))
+    last_id = conn_match.lastrowid
+    insert_frags_to_sqlite(conn_db, last_id)
     conn_db.commit()
     conn_db.close()
+    return last_id
+
+
+def insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_name, frags):
+    def insert_frags_to_postgresql():
+        cursor_frags = connection.cursor()
+        for frag in frags:
+            if len(frag) == 4:
+                cursor_frags.execute('INSERT INTO match_frag\
+                                    (match_id, frag_time, killer_name, victim_name, weapon_code)\
+                                    VALUES\
+                                    (%s, %s, %s, %s, %s);',(last_uuid, *frag))
+            else:
+                cursor_frags.execute('INSERT INTO match_frag\
+                                    (match_id, frag_time, killer_name)\
+                                    VALUES\
+                                    (%s, %s, %s);',(last_uuid, *frag[:-1]))
+
+    try:
+        connection = psycopg2.connect(host=properties[0],
+                                      dbname=properties[1],
+                                      user=properties[2],
+                                      password=properties[3])
+        cursor = connection.cursor()
+        cursor.execute("INSERT INTO match (start_time, end_time, game_mode, map_name)\
+                        VALUES (%s, %s, %s, %s)\
+                        RETURNING match_id;", (start_time, end_time, game_mode, map_name))
+        last_uuid = cursor.fetchone()[0]
+        insert_frags_to_postgresql()
+        connection.commit()
+    except (Exception, psycopg2.Error) as error:
+        raise Exception("Error while connecting to PostgresSQL", error)
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
+    return last_uuid
 
 
 def main():
@@ -137,11 +174,13 @@ def main():
     game_mode, map_name = parse_match_mode_and_map(log_data)
     frags = parse_frags(log_data, log_start_time)
     start_time, end_time = parse_game_session_start_and_end_times(log_data, map_name, log_start_time)
-    insert_match_to_sqlite('farcry.db', start_time, end_time, game_mode, map_name, frags)
+    # insert_match_to_sqlite('farcry.db', start_time, end_time, game_mode, map_name, frags)
+    properties = ('localhost', 'farcry', 'postgres', '1')
+    insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_name, frags)
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as error:
-        print('ERROR : {}', error)
+        print('ERROR : ', error)
