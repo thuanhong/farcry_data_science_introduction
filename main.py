@@ -3,30 +3,49 @@ import sqlite3
 import psycopg2
 from datetime import datetime, timezone, timedelta
 from sys import argv
-from re import findall
 from csv import writer
+from re import findall
 
 
 def read_log_file(log_file_pathname):
+    """
+    reads and return all the bytes from the log file
+    @param log_file_pathname : the pathname of a FarCry server log file
+    @return all the bytes from the log file
+    """
     try:
         with open(log_file_pathname, 'r') as log_data:
             return log_data.read()
     except (PermissionError, FileNotFoundError, OSError):
-        raise ValueError('Invalid file')
+        raise Exception('Invalid file')
 
 
 def parse_log_start_time(log_data):
+    """
+    get a object datetime representing time the FarCry engine began to log event
+    @param log_data : the data read from a far Cry server's log file
+    @return a object datetime.datetime
+    """
+    # format of first line in log file
     format_log_date = 'Log Started at %A, %B %d, %Y %X'
+    # get time zone in log file
     tz = log_data.partition('g_timezone,')[-1].partition(')')[0]
     obj_datetime = datetime.strptime(log_data.partition('\n')[0], format_log_date)
+    # change timezone of object datetime
     obj_datetime = obj_datetime.replace(tzinfo = timezone(timedelta(hours=int(tz))))
     return obj_datetime
 
 
 def parse_log_time(obj_log_time, time_string):
+    """
+    convert time ingame become object datetime
+    @param obj_log_time : object datetime representing time the FarCry engine began to log event
+    @param time_string : time ingame when have a event (a player kill or be kill by another player) (format : 'MM:SS')
+    @return object datetime representing time
+    """
     delta_second = int(time_string[3:]) - obj_log_time.second
     delta_minute = int(time_string[:2]) - obj_log_time.minute
-
+    # change current hours if minute over 59
     if delta_minute < 0:
         delta_hour = 1
     else:
@@ -37,26 +56,42 @@ def parse_log_time(obj_log_time, time_string):
     return obj_datetime
 
 
-def parse_match_mode_and_map(log_data):
+def parse_match_game_mode_and_map_name(log_data):
+    """
+    take game mode and map name in log file
+    @param log_data : the data read from a far Cry server's log file
+    @return a tuple (game_mode, map_name)
+    """
     temporary = log_data.partition('Loading level Levels/')[-1].partition(' -')[0]
     temporary = temporary.split()
     return (temporary[-1], temporary[0][:-1])
 
 
 def parse_frags(log_data, obj_datetime):
+    """
+    take a list contain all event when a player kill or be kill by another player
+    the list include (datetime.datetime(), killer name, victim name, weapon name) or
+                     (datetime.datetime(), killer name) if the player suicide
+    @param log_data : the data read from a far Cry server's log file
+    @param obj_datetime : object datetime representing time the FarCry engine began to log event
+    @return a list of frags
+    """
     output = []
     for line in log_data.split('\n'):
         if 'killed' in line:
-            line = line.split()
-            new_datetime = parse_log_time(obj_datetime, line[0][1:-1])
-            if len(line) == 7:
-                output.append((new_datetime, line[2], line[4], line[6]))
-            elif len(line) == 5:
-                output.append((new_datetime, line[2], line[4]))
+            temp_list = list(findall('<([0-5]\\d):([0-5]\\d)> <\w+> ([\w ]+) killed (?:itself|([\\w ]+) with (\\w+))', line)[0])
+            new_datetime = parse_log_time(obj_datetime, ' '.join(temp_list[0:2]))
+            if temp_list[-1]: # when the player kill another player
+                output.append(tuple([new_datetime] + temp_list[2:]))
+            else: # when the player kill itself
+                output.append(tuple([new_datetime] + temp_list[2:-2]))
     return output
 
 
 def prettify_frags(frags):
+    """
+    
+    """
     def take_icon(weapon):
         for key, value in icon_dict.items():
             if weapon in value:
@@ -86,6 +121,7 @@ def prettify_frags(frags):
 def parse_game_session_start_and_end_times(log_data, mode_map, obj_datetime):
     start_time = log_data.partition('  Level ' + mode_map + ' loaded in ')[0][-6:-1]
     end_time = log_data.partition('Statistics')
+    print(end_time[1])
     if not end_time[1]:
         raise ValueError('error: stack overflow')
     end_time = end_time[0][-10:-5]
@@ -114,18 +150,25 @@ def insert_match_to_sqlite(file_pathname, start_time, end_time, game_mode, map_n
                 conn_frags.execute('INSERT INTO match_frag\
                                     (match_id, frag_time, killer_name)\
                                     VALUES\
-                                    (?, ?, ?)',(match_id, *frag[:-1]))
+                                    (?, ?, ?)',(match_id, *frag))
+        conn_frags.close()        
 
-    conn_db = sqlite3.connect(file_pathname)
-    conn_match = conn_db.cursor()
-    conn_match.execute('INSERT INTO match\
-               (start_time, end_time, game_mode, map_name)\
-               VALUES\
-               (?, ?, ?, ?)', (start_time, end_time, game_mode, map_name))
-    last_id = conn_match.lastrowid
-    insert_frags_to_sqlite(conn_db, last_id)
-    conn_db.commit()
-    conn_db.close()
+    try:
+        conn_db = sqlite3.connect(file_pathname)
+        conn_match = conn_db.cursor()
+        conn_match.execute('INSERT INTO match\
+                (start_time, end_time, game_mode, map_name)\
+                VALUES\
+                (?, ?, ?, ?)', (start_time, end_time, game_mode, map_name))
+        last_id = conn_match.lastrowid
+        insert_frags_to_sqlite(conn_db, last_id)
+        conn_db.commit()
+    except (Exception, psycopg2.Error) as error:
+        raise Exception("Error while connecting to PostgresSQL", error)
+    finally:
+        if conn_db:
+            conn_match.close()
+            conn_db.close()
     return last_id
 
 
@@ -142,7 +185,8 @@ def insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_
                 cursor_frags.execute('INSERT INTO match_frag\
                                     (match_id, frag_time, killer_name)\
                                     VALUES\
-                                    (%s, %s, %s);',(last_uuid, *frag[:-1]))
+                                    (%s, %s, %s);',(last_uuid, *frag))
+        cursor_frags.close()
 
     try:
         connection = psycopg2.connect(host=properties[0],
@@ -168,16 +212,18 @@ def insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_
 def main():
     log_data = read_log_file(argv[1])
     log_start_time = parse_log_start_time(log_data)
-    game_mode, map_name = parse_match_mode_and_map(log_data)
+    game_mode, map_name = parse_match_game_mode_and_map_name(log_data)
     frags = parse_frags(log_data, log_start_time)
-    start_time, end_time = parse_game_session_start_and_end_times(log_data, map_name, log_start_time)
+    print(*frags, sep='\n')
+    # start_time, end_time = parse_game_session_start_and_end_times(log_data, map_name, log_start_time)
     # insert_match_to_sqlite('farcry.db', start_time, end_time, game_mode, map_name, frags)
-    properties = ('localhost', 'farcry', 'postgres', '1')
-    insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_name, frags)
+    # properties = ('localhost', 'farcry', 'postgres', '1')
+    # insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_name, frags)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as error:
-        print('ERROR : ', error)
+    # try:
+    #     main()
+    # except Exception as error:
+    #     print('ERROR : ', error)
+    main()
