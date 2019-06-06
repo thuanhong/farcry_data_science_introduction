@@ -53,9 +53,6 @@ def parse_frags(log_data, obj_datetime):
                 output.append((new_datetime, line[2], line[4], line[6]))
             elif len(line) == 5:
                 output.append((new_datetime, line[2], line[4]))
-            else:
-                raise ValueError('Name of player or name of weapon invalid\
-                                  \n{}'.format(' '.join(line)))
     return output
 
 
