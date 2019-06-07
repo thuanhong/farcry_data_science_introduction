@@ -90,7 +90,9 @@ def parse_frags(log_data, obj_datetime):
 
 def prettify_frags(frags):
     """
-    
+    take a list with emoji
+    @param frags : a list of frags
+    @return a list strings, each with follwing format
     """
     def take_icon(weapon):
         for key, value in icon_dict.items():
@@ -118,10 +120,16 @@ def prettify_frags(frags):
     return prettified_frags
 
 
-def parse_game_session_start_and_end_times(log_data, mode_map, obj_datetime):
-    start_time = log_data.partition('  Level ' + mode_map + ' loaded in ')[0][-6:-1]
+def parse_game_session_start_and_end_times(log_data, map_name, obj_datetime):
+    """
+    get time start and time end of session
+    @param log_data : the data read from a far Cry server's log file
+    @param map_name : map name
+    @param obj_datetime : object datetime representing time the FarCry engine began to log event
+    @return the approximate start and end time of the game session
+    """
+    start_time = log_data.partition('  Level ' + map_name + ' loaded in ')[0][-6:-1]
     end_time = log_data.partition('Statistics')
-    print(end_time[1])
     if not end_time[1]:
         raise ValueError('error: stack overflow')
     end_time = end_time[0][-10:-5]
@@ -132,13 +140,36 @@ def parse_game_session_start_and_end_times(log_data, mode_map, obj_datetime):
 
 
 def write_frag_csv_file(file_csv, frags):
+    """
+    write list frags become file csv
+    @param file_csv : file csv name
+    @param frags : a list of frags
+    @return None
+    """
     with open(file_csv, 'w') as myfile:
         wr = writer(myfile, lineterminator='\n')
         wr.writerows(frags)
 
 
 def insert_match_to_sqlite(file_pathname, start_time, end_time, game_mode, map_name, frags):
+    """
+    insert data into sqlite database in match table
+    @param file_pathname : the path and anme of th Far Cry's SQLite database
+    @param start_time : a datettime.datetime object with time zone
+                        information corresponding to the start of the game session
+    @param end_time : a datettime.datetime object with time zone
+                      information corresponding to the end of the game session
+    @param game_mode : multiplayer mode of the game session
+    @param map_name : name of the map that was played
+    @param frags : a list of tuple of following
+    @return last id of database
+    """
     def insert_frags_to_sqlite(connection, match_id):
+        """
+        insert data into sqlite database in match_frag table
+        @param connection : a sqlite Connection object
+        @param match_id : current id
+        """
         conn_frags = connection.cursor()
         for frag in frags:
             if len(frag) == 4:
@@ -173,7 +204,21 @@ def insert_match_to_sqlite(file_pathname, start_time, end_time, game_mode, map_n
 
 
 def insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_name, frags):
+    """
+    insert data into postgressql database in match table
+    @param properties : a tuple contain user, password, database, host
+                        information corresponding to the start of the game session
+    @param end_time : a datettime.datetime object with time zone
+                      information corresponding to the end of the game session
+    @param game_mode : multiplayer mode of the game session
+    @param map_name : name of the map that was played
+    @param frags : a list of tuple of following
+    @return last id of database
+    """
     def insert_frags_to_postgresql():
+        """
+        insert data into sqlite database in match_frag table
+        """
         cursor_frags = connection.cursor()
         for frag in frags:
             if len(frag) == 4:
@@ -215,15 +260,14 @@ def main():
     game_mode, map_name = parse_match_game_mode_and_map_name(log_data)
     frags = parse_frags(log_data, log_start_time)
     print(*frags, sep='\n')
-    # start_time, end_time = parse_game_session_start_and_end_times(log_data, map_name, log_start_time)
-    # insert_match_to_sqlite('farcry.db', start_time, end_time, game_mode, map_name, frags)
-    # properties = ('localhost', 'farcry', 'postgres', '1')
-    # insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_name, frags)
+    start_time, end_time = parse_game_session_start_and_end_times(log_data, map_name, log_start_time)
+    insert_match_to_sqlite('farcry.db', start_time, end_time, game_mode, map_name, frags)
+    properties = ('localhost', 'farcry', 'postgres', '1')
+    insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_name, frags)
 
 
 if __name__ == "__main__":
-    # try:
-    #     main()
-    # except Exception as error:
-    #     print('ERROR : ', error)
-    main()
+    try:
+        main()
+    except Exception as error:
+        print('ERROR : ', error)
