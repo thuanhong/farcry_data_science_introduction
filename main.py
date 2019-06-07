@@ -255,13 +255,19 @@ def insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_
 
 
 def main():
+    # read data from log file
     log_data = read_log_file(argv[1])
+    # get time began write log file
     log_start_time = parse_log_start_time(log_data)
+    # get game mode and map name
     game_mode, map_name = parse_match_game_mode_and_map_name(log_data)
+    # get event shooting in game (a player kill or be kill by another player)
     frags = parse_frags(log_data, log_start_time)
-    print(*frags, sep='\n')
+    # get start time and end time of a match
     start_time, end_time = parse_game_session_start_and_end_times(log_data, map_name, log_start_time)
+    # insert data into sqlite database
     insert_match_to_sqlite('farcry.db', start_time, end_time, game_mode, map_name, frags)
+    # insert data into postgresql database
     properties = ('localhost', 'farcry', 'postgres', '1')
     insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_name, frags)
 
