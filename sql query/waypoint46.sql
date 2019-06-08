@@ -1,0 +1,1 @@
+CREATE DATABASE farcry ENCODING 'utf-8';
