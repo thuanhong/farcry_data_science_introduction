@@ -254,6 +254,49 @@ def insert_match_to_postgresql(properties, start_time, end_time, game_mode, map_
     return last_uuid
 
 
+def take_all_player_in_frags(frags, index):
+    output = set()
+    for frag in frags:
+        if len(frag) == 2:
+            continue
+        output.update([frag[index]])
+    return output
+
+
+def take_list_player(frags, column1, column2, player):
+    list_longest = []
+    list_current = []
+    for frag in frags:
+        if len(frag) == 2:
+            continue
+        if frag[column2] == player:
+            if len(list_current) > len(list_longest):
+                list_longest = list_current.copy()
+            list_current.clear()
+        elif frag[column1] == player:
+            frag = list(frag)
+            if column1 < column2:
+                list_current.append(frag[0:1]+frag[2:])
+            else:
+                list_current.append(frag[0:2]+frag[-1:])
+    return list_longest
+
+
+def calculate_serial(frags, column1, column2):
+    serier_kill = {}
+    for player in take_all_player_in_frags(frags, column1):
+        serier_kill[player] = take_list_player(frags, column1, column2, player)
+    return serier_kill
+
+
+def calculate_serial_killer(frags):
+    return calculate_serial(frags, 1, 2)
+
+
+def calculate_serial_loser(frags):
+    return calculate_serial(frags, 2, 1)
+
+
 def main():
     # read data from log file
     log_data = read_log_file(argv[1])
@@ -265,6 +308,17 @@ def main():
     frags = parse_frags(log_data, log_start_time)
     # get start time and end time of a match
     start_time, end_time = parse_game_session_start_and_end_times(log_data, map_name, log_start_time)
+    
+    serial_killers = calculate_serial_killer(frags)
+    for player_name, kill_serier in serial_killers.items():
+        print('[%s]' % player_name)
+        print('\n'.join([', '.join(([str(e) for e in kill])) for kill in kill_serier]))
+    
+    serial_killers = calculate_serial_loser(frags)
+    for player_name, kill_serier in serial_killers.items():
+        print('[%s]' % player_name)
+        print('\n'.join([', '.join(([str(e) for e in kill])) for kill in kill_serier]))
+
     # insert data into sqlite database
     insert_match_to_sqlite('farcry.db', start_time, end_time, game_mode, map_name, frags)
     # insert data into postgresql database
@@ -273,7 +327,8 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as error:
-        print('ERROR : ', error)
+    # try:
+    #     main()
+    # except Exception as error:
+    #     print('ERROR : ', error)
+    main()
